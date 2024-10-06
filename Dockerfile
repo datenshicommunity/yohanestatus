@@ -1,23 +1,29 @@
-FROM golang:1.23-alpine AS build
-# For gcc compilers
-RUN apk add --update --no-cache build-base
-RUN apk add --update --no-cache upx
+# Gunakan image golang resmi sebagai base image
+FROM golang:alpine AS builder
 
-WORKDIR /go/src/app
+# Atur direktori kerja di dalam container
+WORKDIR /app
 
-COPY . /go/src/app/
+# Salin file go.mod dan go.sum
+COPY go.mod go.sum ./
+# Download dependensi
 RUN go mod download
-# Add options for building go with static library
-RUN GOOS=linux CGO_ENABLED=1 go build -ldflags "-s -w -extldflags '-static'" -o ./backend
-# Compress the binary file using Ultimate Packer for eXecutables
-RUN upx ./backend
 
-# Stage 2 final
-FROM scratch
+# Salin seluruh kode sumber
+COPY . .
+# Build aplikasi
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+# Gunakan image alpine yang lebih ringan untuk runtime
+FROM alpine:latest  
+# Instal ca-certificates untuk HTTPS
+RUN apk --no-cache add ca-certificates
+WORKDIR /root/
 
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=build /go/src/app/backend /backend
+# Salin binary dari stage builder
+COPY --from=builder /app/main .
 
-ENTRYPOINT ["/backend"]
+# Expose port yang digunakan oleh aplikasi
+EXPOSE 3000
 
-EXPOSE 8080
+# Jalankan aplikasi
+CMD ["./main"]
